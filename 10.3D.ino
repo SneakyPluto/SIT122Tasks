@@ -26,7 +26,7 @@ MeLineFollower lineFinder(PORT_8);
 MeUltrasonicSensor ultraSensorLeft(PORT_9);    /* Ultrasonic module can ONLY be connected to port 3, 4, 6, 7, 8 of base shield. */
 MeUltrasonicSensor ultraSensorFront(PORT_10);  // /* Ultrasonic module can ONLY be connected to port 3, 4, 6, 7, 8 of base shield. */
 
-int16_t moveSpeed = 65;
+int16_t moveSpeed = 50;
 
 MeGyro gyro(1, 0x69);
 
@@ -41,7 +41,7 @@ MeGyro gyro(1, 0x69);
 const double fullRotation = 350.0;
 const int numDataPoints = LEDNUM;  // Number of data points equal to the number of LEDs
 double distanceMeasurements[LEDNUM];
-const double maxDistance = 100.0;  // Maximum distance for mapping
+const double maxDistance = 50.0;  // Maximum distance for mapping
 
 // State definitions
 typedef enum {
@@ -165,25 +165,46 @@ void perform360Scan() {
     }
   }
 
-  // // Map distances to LED brightness and display
-  // for (int i = 0; i < numDataPoints; i++) {
-  //   int brightness = map(distanceMeasurements[i], 0, 100, 255, 0);  // Map distance to brightness
-  //   led.setColor(i, brightness, brightness, brightness);
-  // }
-  // led.show();
-
-  // Map distances to LED colors and display
+  // Map distances to LED brightness and display
   for (int i = 0; i < numDataPoints; i++) {
-    int redValue = map(distanceMeasurements[i], 0, maxDistance, 255, 0);   // Closer is redder
-    int blueValue = map(distanceMeasurements[i], 0, maxDistance, 0, 255);  // Farther is bluer
-    int greenValue = 0;                                                    // No green component in this gradient
+    int redValue = map(distanceMeasurements[i], 0, maxDistance, 255, 0);  // Closer is brighter red
     redValue = constrain(redValue, 0, 255);
-    blueValue = constrain(blueValue, 0, 255);
-    led.setColor(i, redValue, greenValue, blueValue);
+    led.setColor(i, redValue, 0, 0);  // Only red component
   }
   led.show();
 }
 
+//Move in opposite direction feature
+void moveInOppositeDirection() {
+  double minDistance = maxDistance;
+  int closestPoint = -1;
+
+  // Find the closest point
+  for (int i = 0; i < numDataPoints; i++) {
+    if (distanceMeasurements[i] < minDistance) {
+      minDistance = distanceMeasurements[i];
+      closestPoint = i;
+    }
+  }
+
+  // If no obstacles found, return
+  if (closestPoint == -1) {
+    return;
+  }
+
+  // Calculate the opposite direction
+  double oppositeDirection = (closestPoint * (fullRotation / numDataPoints)) + 180.0;
+  if (oppositeDirection >= 360.0) {
+    oppositeDirection -= 360.0;
+  }
+
+  // Rotate to the opposite direction
+  turnRightDegree(oppositeDirection);
+
+  // Move forward for a specified duration
+  Forward();
+  delay(1000);
+}
 
 void setup() {
   Serial.begin(115200);
@@ -202,131 +223,27 @@ void setup() {
 }
 
 void loop() {
-  perform360Scan();
+  while (true) {
+    perform360Scan();
+
+    bool obstacleDetected = false;
+    for (int i = 0; i < numDataPoints; i++) {
+      if (distanceMeasurements[i] < maxDistance) {
+        obstacleDetected = true;
+        break;
+      }
+    }
+    if (obstacleDetected) {
+      moveInOppositeDirection();
+    } else {
+      delay(1000);  // Wait before performing another scan if no obstacles are detected
+    }
+  }
 }
 
-// // Loop containing move towards object feature
+// // Main program loop
 // void loop() {
-//     unsigned long currentTime = millis();  // Get current time
-
-//     switch (currentState) {
-//         case SEEK_FULL_CIRCLE:
-//             if (IsObjectDetected()) {
-//                 Stop();
-//                 objectDetected = true;
-//                 currentState = FOLLOW;
-//             } else {
-//                 TurnLeft1();  // Turning in a full circle
-//             }
-//             break;
-
-//         case SEEK_PARTIAL:
-//             if (IsObjectDetected()) {
-//                 Stop();
-//                 objectDetected = true;
-//                 currentState = FOLLOW;
-//             } else {
-//                 // Check if the timeout has been reached
-//                 if (currentTime - lostTime > PARTIAL_SEEK_TIMEOUT) {
-//                     currentState = SEEK_FULL_CIRCLE;
-//                 } else {
-//                     // Alternate left and right turns for partial seeking
-//                     static bool turnLeft = true;
-//                     if (turnLeft) {
-//                         TurnLeft1();
-//                         delay(350);
-//                     } else {
-//                         TurnRight1();
-//                         delay(275);
-//                     }
-//                     turnLeft = !turnLeft;
-//                 }
-//             }
-//             break;
-
-//         case FOLLOW:
-//             if (IsObjectDetected()) {
-//                 MoveTowardsObject();
-//             } else {
-//                 objectDetected = false;
-//                 lostTime = currentTime;  // Record the time when the object is lost
-//                 currentState = SEEK_PARTIAL;
-//             }
-//             break;
-
-//         case STOP:
-//             if (!IsObjectDetected()) {
-//                 objectDetected = false;
-//                 lostTime = currentTime;  // Record the time when the object is lost
-//                 currentState = SEEK_PARTIAL;
-//             }
-//             break;
-//     }
-
-//     // Adding a small delay to avoid busy-waiting
-//     delay(100);
-// }
-// Seeks for an object then stops once the object is detected
-// void SeekObject () {
-//   while (1) {
-//     double sensorFront = ultraSensorFront.distanceCm();
-//     if(sensorFront < 20) {
-//       Stop();
-//       break;
-//     }
-//     TurnRight1();
-//   }
-// }
-
-
-//Look At Object Feature
-// void loop() {
-//   // Check timer and update lostTime if needed
-//   unsigned long currentTime = millis();
-//   if (currentState == STOP && !IsObjectDetected()) {
-//     objectDetected = false;
-//     lostTime = currentTime;
-//     currentState = SEEK_PARTIAL;
-//   }
-
-//   switch (currentState) {
-//     case SEEK_FULL_CIRCLE:
-//       if (IsObjectDetected()) {
-//         Stop();
-//         objectDetected = true;
-//         currentState = STOP;
-//       } else {
-//         TurnLeft1();  // Turning in a full circle
-//       }
-//       break;
-
-//     case SEEK_PARTIAL:
-//       if (IsObjectDetected()) {
-//         Stop();
-//         objectDetected = true;
-//         currentState = STOP;
-//       } else {
-//         // Check if the timeout has been reached
-//         if (currentTime - lostTime > PARTIAL_SEEK_TIMEOUT) {
-//           currentState = SEEK_FULL_CIRCLE;
-//           delay(100);
-//         } else {
-//           // Alternate left and right turns for partial seeking
-//           static bool turnLeft = true;
-//           if (turnLeft) {
-//             TurnLeft1();
-//             delay(350);
-//           } else {
-//             TurnRight1();
-//             delay(300);
-//           }
-//           turnLeft = !turnLeft;
-//         }
-//       }
-//     case STOP:
-//       // No additional logic needed here
-//       break;
-//   }
+//   // perform360Scan();
 // }
 
 
@@ -380,43 +297,6 @@ void trackLine() {
     TurnRight1();
     sensorState = lineFinder.readSensors();
   }
-}
-
-void followLine() {
-  int sensorState = lineFinder.readSensors();
-  switch (sensorState) {
-    case S1_OUT_S2_OUT:
-      led.setColorAt(2, 35, 0, 0);
-      led.show();
-      Serial.println("S1_OUT_S2_OUT");
-      Forward();
-      break;
-    case S1_IN_S2_OUT:
-      led.setColorAt(2, 0, 35, 0);
-      led.show();
-      Serial.println("S1_IN_S2_OUT");
-      TurnRight1();
-      delay(300);
-      Forward();
-      break;
-    case S1_OUT_S2_IN:
-      led.setColorAt(2, 0, 0, 35);
-      led.show();
-      Serial.println("S1_OUT_S2_IN");
-      TurnLeft1();
-      delay(300);
-      Forward();
-      break;
-    case S1_IN_S2_IN:
-      Serial.println("S1_IN_S2_IN");
-      // Decide what to do when both sensors are on the white background.
-      // Here, we'll stop the robot.
-      Backward();
-      break;
-    default:
-      break;
-  }
-  // delay(200); // Adjust the delay if necessary
 }
 
 void turnLeft(double degree) {
